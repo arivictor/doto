@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MarkdownUI
 
 struct MarkdownEditorView: View {
     @ObservedObject var workspaceManager: WorkspaceManager
@@ -100,23 +101,12 @@ struct MarkdownEditorView: View {
 
 struct AppleMarkdownRenderer: View {
     let content: String
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            do {
-                let attributedString = try AttributedString(markdown: content)
-                Text(attributedString)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .multilineTextAlignment(.leading)
-            } catch {
-                // Fallback to plain text if markdown parsing fails
-                Text(content)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .multilineTextAlignment(.leading)
-            }
+        ScrollView {
+            Markdown(content)
+                .markdownTheme(.gitHub)
+                .padding()
         }
     }
 }
