@@ -28,6 +28,7 @@ struct MainView: View {
                 if let url = try? URL(resolvingBookmarkData: workspaceData, bookmarkDataIsStale: &isStale) {
                     if url.startAccessingSecurityScopedResource() {
                         workspaceManager.workspaceURL = url
+                        workspaceManager.currentDirectoryURL = url // Initialize current directory
                         workspaceManager.loadWorkspaceItems()
                         workspaceManager.loadNotes()
                     }

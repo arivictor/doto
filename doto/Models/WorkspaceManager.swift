@@ -25,11 +25,36 @@ struct WorkspaceItem: Identifiable, Hashable {
 
 class WorkspaceManager: ObservableObject {
     @Published var workspaceURL: URL?
+    @Published var currentDirectoryURL: URL?
     @Published var notes: [Note] = []
     @Published var selectedNote: Note?
     @Published var workspaceItems: [WorkspaceItem] = []
     
     private var autoSaveTimer: Timer?
+    
+    // Computed property for breadcrumb path
+    var breadcrumbPath: [URL] {
+        guard let workspaceURL = workspaceURL,
+              let currentURL = currentDirectoryURL else { return [] }
+        
+        var path: [URL] = []
+        var current = currentURL
+        
+        while current != workspaceURL {
+            path.insert(current, at: 0)
+            current = current.deletingLastPathComponent()
+            if current.path == "/" { break }
+        }
+        
+        path.insert(workspaceURL, at: 0)
+        return path
+    }
+    
+    var isInSubdirectory: Bool {
+        guard let workspaceURL = workspaceURL,
+              let currentURL = currentDirectoryURL else { return false }
+        return currentURL != workspaceURL
+    }
     
     func selectWorkspace() {
         let panel = NSOpenPanel()
@@ -42,18 +67,38 @@ class WorkspaceManager: ObservableObject {
             // Start accessing security-scoped resource
             if url.startAccessingSecurityScopedResource() {
                 workspaceURL = url
+                currentDirectoryURL = url // Start at workspace root
                 loadWorkspaceItems()
                 loadNotes()
             }
         }
     }
     
+    func navigateToDirectory(_ url: URL) {
+        currentDirectoryURL = url
+        loadWorkspaceItems()
+        loadNotes()
+    }
+    
+    func navigateUp() {
+        guard let currentURL = currentDirectoryURL,
+              let workspaceURL = workspaceURL,
+              currentURL != workspaceURL else { return }
+        
+        let parentURL = currentURL.deletingLastPathComponent()
+        if parentURL.path.contains(workspaceURL.path) || parentURL == workspaceURL {
+            currentDirectoryURL = parentURL
+            loadWorkspaceItems()
+            loadNotes()
+        }
+    }
+    
     func loadWorkspaceItems() {
-        guard let workspaceURL = workspaceURL else { return }
+        guard let currentURL = currentDirectoryURL ?? workspaceURL else { return }
         
         do {
             let fileManager = FileManager.default
-            let contents = try fileManager.contentsOfDirectory(at: workspaceURL, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey])
+            let contents = try fileManager.contentsOfDirectory(at: currentURL, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey])
             
             var items: [WorkspaceItem] = []
             for url in contents {
@@ -64,18 +109,27 @@ class WorkspaceManager: ObservableObject {
                 items.append(item)
             }
             
-            workspaceItems = items.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            workspaceItems = items.sorted { item1, item2 in
+                // Directories first, then files
+                if item1.isDirectory && !item2.isDirectory {
+                    return true
+                } else if !item1.isDirectory && item2.isDirectory {
+                    return false
+                } else {
+                    return item1.name.localizedCaseInsensitiveCompare(item2.name) == .orderedAscending
+                }
+            }
         } catch {
             print("Error loading workspace items: \(error)")
         }
     }
     
     func loadNotes() {
-        guard let workspaceURL = workspaceURL else { return }
+        guard let currentURL = currentDirectoryURL ?? workspaceURL else { return }
         
         do {
             let fileManager = FileManager.default
-            let contents = try fileManager.contentsOfDirectory(at: workspaceURL, includingPropertiesForKeys: [.isRegularFileKey])
+            let contents = try fileManager.contentsOfDirectory(at: currentURL, includingPropertiesForKeys: [.isRegularFileKey])
             
             let markdownFiles = contents.filter { url in
                 url.pathExtension.lowercased() == "md"
@@ -99,13 +153,13 @@ class WorkspaceManager: ObservableObject {
     }
     
     func createNewNote() {
-        guard let workspaceURL = workspaceURL else { return }
+        guard let currentURL = currentDirectoryURL ?? workspaceURL else { return }
         
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH-mm-ss"
         let timestamp = dateFormatter.string(from: Date())
         let fileName = "New Note \(timestamp).md"
-        let fileURL = workspaceURL.appendingPathComponent(fileName)
+        let fileURL = currentURL.appendingPathComponent(fileName)
         
         let newNote = Note(url: fileURL, content: "# \(fileURL.deletingPathExtension().lastPathComponent)\n\n")
         
@@ -140,7 +194,7 @@ class WorkspaceManager: ObservableObject {
     }
     
     func renameNote(_ note: Note, to newName: String) {
-        guard let workspaceURL = workspaceURL else { return }
+        guard let currentURL = currentDirectoryURL ?? workspaceURL else { return }
         
         // Ensure the new name has .md extension
         var fileName = newName
@@ -148,7 +202,7 @@ class WorkspaceManager: ObservableObject {
             fileName += ".md"
         }
         
-        let newURL = workspaceURL.appendingPathComponent(fileName)
+        let newURL = currentURL.appendingPathComponent(fileName)
         
         do {
             // Move the file to the new name
@@ -173,6 +227,40 @@ class WorkspaceManager: ObservableObject {
             
         } catch {
             print("Error renaming note: \(error)")
+        }
+    }
+    
+    func deleteNote(_ note: Note) {
+        do {
+            // Move to trash instead of permanent deletion
+            try FileManager.default.trashItem(at: note.url, resultingItemURL: nil)
+            
+            // Remove from arrays
+            notes.removeAll { $0.id == note.id }
+            
+            // Clear selection if this note was selected
+            if selectedNote?.id == note.id {
+                selectedNote = nil
+            }
+            
+            // Reload workspace items to reflect the change
+            loadWorkspaceItems()
+            
+        } catch {
+            print("Error deleting note: \(error)")
+        }
+    }
+    
+    func createFolder(_ name: String) {
+        guard let currentURL = currentDirectoryURL ?? workspaceURL else { return }
+        
+        let folderURL = currentURL.appendingPathComponent(name)
+        
+        do {
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: false, attributes: nil)
+            loadWorkspaceItems()
+        } catch {
+            print("Error creating folder: \(error)")
         }
     }
 }

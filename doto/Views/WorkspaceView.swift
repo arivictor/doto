@@ -9,6 +9,8 @@ import SwiftUI
 
 struct WorkspaceView: View {
     @ObservedObject var workspaceManager: WorkspaceManager
+    @State private var isCreatingFolder = false
+    @State private var newFolderName = ""
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -20,14 +22,26 @@ struct WorkspaceView: View {
                 
                 Spacer()
                 
-                Button(action: {
-                    workspaceManager.createNewNote()
-                }) {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundColor(.blue)
+                HStack(spacing: 8) {
+                    Button(action: {
+                        newFolderName = ""
+                        isCreatingFolder = true
+                    }) {
+                        Image(systemName: "folder.badge.plus")
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help("Create New Folder")
+                    
+                    Button(action: {
+                        workspaceManager.createNewNote()
+                    }) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help("Create New Note")
                 }
-                .buttonStyle(PlainButtonStyle())
-                .help("Create New Note")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -61,25 +75,63 @@ struct WorkspaceView: View {
             } else {
                 // Notes list
                 VStack(alignment: .leading, spacing: 0) {
-                    // Workspace info
-                    HStack {
-                        Image(systemName: "folder.fill")
-                            .foregroundColor(.blue)
-                        Text(workspaceManager.workspaceURL?.lastPathComponent ?? "")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                        
-                        Spacer()
-                        
-                        Button(action: {
-                            workspaceManager.selectWorkspace()
-                        }) {
-                            Image(systemName: "folder.badge.gearshape")
+                    // Workspace info with breadcrumb navigation
+                    VStack(spacing: 4) {
+                        HStack {
+                            Image(systemName: "folder.fill")
+                                .foregroundColor(.blue)
+                            Text(workspaceManager.workspaceURL?.lastPathComponent ?? "")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                workspaceManager.selectWorkspace()
+                            }) {
+                                Image(systemName: "folder.badge.gearshape")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .help("Change Workspace")
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .help("Change Workspace")
+                        
+                        // Breadcrumb navigation if in subdirectory
+                        if workspaceManager.isInSubdirectory {
+                            HStack(spacing: 4) {
+                                Button(action: {
+                                    workspaceManager.navigateUp()
+                                }) {
+                                    Image(systemName: "arrow.up")
+                                        .foregroundColor(.blue)
+                                        .font(.system(size: 12))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .help("Go Up")
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 4) {
+                                        ForEach(Array(workspaceManager.breadcrumbPath.enumerated()), id: \.offset) { index, url in
+                                            HStack(spacing: 2) {
+                                                if index > 0 {
+                                                    Text("/")
+                                                        .foregroundColor(.secondary)
+                                                        .font(.system(size: 10))
+                                                }
+                                                
+                                                Button(url.lastPathComponent) {
+                                                    workspaceManager.navigateToDirectory(url)
+                                                }
+                                                .foregroundColor(index == workspaceManager.breadcrumbPath.count - 1 ? .primary : .blue)
+                                                .font(.system(size: 10))
+                                                .buttonStyle(PlainButtonStyle())
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -120,6 +172,15 @@ struct WorkspaceView: View {
             }
         }
         .background(Color(NSColor.controlBackgroundColor))
+        .alert("Create New Folder", isPresented: $isCreatingFolder) {
+            TextField("Folder name", text: $newFolderName)
+            Button("Create") {
+                if !newFolderName.isEmpty {
+                    workspaceManager.createFolder(newFolderName)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        }
     }
 }
 
@@ -160,16 +221,30 @@ struct WorkspaceItemRowView: View {
                 
                 // Context menu for markdown files
                 if item.isMarkdownFile {
-                    Button(action: {
-                        newName = item.url.deletingPathExtension().lastPathComponent
-                        isRenaming = true
-                    }) {
-                        Image(systemName: "pencil")
-                            .foregroundColor(.secondary)
-                            .font(.system(size: 10))
+                    HStack(spacing: 4) {
+                        Button(action: {
+                            newName = item.url.deletingPathExtension().lastPathComponent
+                            isRenaming = true
+                        }) {
+                            Image(systemName: "pencil")
+                                .foregroundColor(.secondary)
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .opacity(0.7)
+                        
+                        Button(action: {
+                            if let note = workspaceManager.notes.first(where: { $0.url == item.url }) {
+                                workspaceManager.deleteNote(note)
+                            }
+                        }) {
+                            Image(systemName: "trash")
+                                .foregroundColor(.red)
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .opacity(0.7)
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    .opacity(0.7)
                 }
             }
         }
@@ -183,7 +258,10 @@ struct WorkspaceItemRowView: View {
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
         .onTapGesture {
-            if item.isMarkdownFile {
+            if item.isDirectory {
+                // Navigate into the directory
+                workspaceManager.navigateToDirectory(item.url)
+            } else if item.isMarkdownFile {
                 // Select the note
                 if let note = workspaceManager.notes.first(where: { $0.url == item.url }) {
                     workspaceManager.selectedNote = note

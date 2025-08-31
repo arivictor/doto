@@ -103,15 +103,19 @@ struct AppleMarkdownRenderer: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let attributedString = try? AttributedString(markdown: content) {
+            do {
+                let attributedString = try AttributedString(markdown: content)
                 Text(attributedString)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
+                    .multilineTextAlignment(.leading)
+            } catch {
+                // Fallback to plain text if markdown parsing fails
                 Text(content)
                     .font(.body)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .multilineTextAlignment(.leading)
             }
         }
     }
