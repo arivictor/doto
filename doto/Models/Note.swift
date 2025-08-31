@@ -9,7 +9,7 @@ import Foundation
 
 struct Note: Identifiable, Hashable {
     let id = UUID()
-    let url: URL
+    var url: URL
     var content: String
     var lastModified: Date
     

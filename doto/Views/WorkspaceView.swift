@@ -87,14 +87,14 @@ struct WorkspaceView: View {
                     
                     Divider()
                     
-                    // Notes list
-                    if workspaceManager.notes.isEmpty {
+                    // Workspace items (files and folders)
+                    if workspaceManager.workspaceItems.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "doc.text")
                                 .font(.system(size: 32))
                                 .foregroundColor(.secondary)
                             
-                            Text("No Notes")
+                            Text("Empty Workspace")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             
@@ -107,13 +107,11 @@ struct WorkspaceView: View {
                     } else {
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 1) {
-                                ForEach(workspaceManager.notes) { note in
-                                    NoteRowView(
-                                        note: note,
-                                        isSelected: workspaceManager.selectedNote?.id == note.id
-                                    ) {
-                                        workspaceManager.selectedNote = note
-                                    }
+                                ForEach(workspaceManager.workspaceItems) { item in
+                                    WorkspaceItemRowView(
+                                        item: item,
+                                        workspaceManager: workspaceManager
+                                    )
                                 }
                             }
                         }
@@ -122,6 +120,76 @@ struct WorkspaceView: View {
             }
         }
         .background(Color(NSColor.controlBackgroundColor))
+    }
+}
+
+struct WorkspaceItemRowView: View {
+    let item: WorkspaceItem
+    @ObservedObject var workspaceManager: WorkspaceManager
+    @State private var isRenaming = false
+    @State private var newName = ""
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            // Icon
+            Image(systemName: item.isDirectory ? "folder.fill" : (item.isMarkdownFile ? "doc.text" : "doc"))
+                .foregroundColor(item.isDirectory ? .blue : (item.isMarkdownFile ? .green : .gray))
+                .frame(width: 16)
+            
+            if isRenaming && item.isMarkdownFile {
+                // Rename text field (only for markdown files)
+                TextField("New name", text: $newName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .onSubmit {
+                        if !newName.isEmpty, let note = workspaceManager.notes.first(where: { $0.url == item.url }) {
+                            workspaceManager.renameNote(note, to: newName)
+                        }
+                        isRenaming = false
+                    }
+                    .onExitCommand {
+                        isRenaming = false
+                    }
+            } else {
+                // Item name
+                Text(item.name)
+                    .font(.system(size: 13, weight: item.isMarkdownFile && workspaceManager.selectedNote?.url == item.url ? .medium : .regular))
+                    .foregroundColor(item.isMarkdownFile && workspaceManager.selectedNote?.url == item.url ? .white : .primary)
+                    .lineLimit(1)
+                
+                Spacer()
+                
+                // Context menu for markdown files
+                if item.isMarkdownFile {
+                    Button(action: {
+                        newName = item.url.deletingPathExtension().lastPathComponent
+                        isRenaming = true
+                    }) {
+                        Image(systemName: "pencil")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 10))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .opacity(0.7)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(item.isMarkdownFile && workspaceManager.selectedNote?.url == item.url ? Color.blue : Color.clear)
+        )
+        .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if item.isMarkdownFile {
+                // Select the note
+                if let note = workspaceManager.notes.first(where: { $0.url == item.url }) {
+                    workspaceManager.selectedNote = note
+                }
+            }
+        }
     }
 }
 

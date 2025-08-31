@@ -41,10 +41,10 @@ struct MarkdownEditorView: View {
                 
                 // Editor content
                 if isPreviewMode {
-                    // Preview mode
+                    // Preview mode using Apple's native markdown renderer
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
-                            MarkdownRenderer(content: editingContent)
+                            AppleMarkdownRenderer(content: editingContent)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
@@ -98,105 +98,21 @@ struct MarkdownEditorView: View {
     }
 }
 
-struct MarkdownRenderer: View {
+struct AppleMarkdownRenderer: View {
     let content: String
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(parseMarkdown(content), id: \.self) { element in
-                renderElement(element)
-            }
-        }
-    }
-    
-    private func parseMarkdown(_ content: String) -> [MarkdownElement] {
-        let lines = content.components(separatedBy: .newlines)
-        var elements: [MarkdownElement] = []
-        var currentParagraph: [String] = []
-        
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-            
-            if trimmedLine.isEmpty {
-                if !currentParagraph.isEmpty {
-                    elements.append(.paragraph(currentParagraph.joined(separator: "\n")))
-                    currentParagraph = []
-                }
-            } else if trimmedLine.hasPrefix("# ") {
-                if !currentParagraph.isEmpty {
-                    elements.append(.paragraph(currentParagraph.joined(separator: "\n")))
-                    currentParagraph = []
-                }
-                elements.append(.heading1(String(trimmedLine.dropFirst(2))))
-            } else if trimmedLine.hasPrefix("## ") {
-                if !currentParagraph.isEmpty {
-                    elements.append(.paragraph(currentParagraph.joined(separator: "\n")))
-                    currentParagraph = []
-                }
-                elements.append(.heading2(String(trimmedLine.dropFirst(3))))
-            } else if trimmedLine.hasPrefix("### ") {
-                if !currentParagraph.isEmpty {
-                    elements.append(.paragraph(currentParagraph.joined(separator: "\n")))
-                    currentParagraph = []
-                }
-                elements.append(.heading3(String(trimmedLine.dropFirst(4))))
-            } else if trimmedLine.hasPrefix("- ") || trimmedLine.hasPrefix("* ") {
-                if !currentParagraph.isEmpty {
-                    elements.append(.paragraph(currentParagraph.joined(separator: "\n")))
-                    currentParagraph = []
-                }
-                elements.append(.bulletPoint(String(trimmedLine.dropFirst(2))))
+        VStack(alignment: .leading, spacing: 0) {
+            if let attributedString = try? AttributedString(markdown: content) {
+                Text(attributedString)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                currentParagraph.append(line)
-            }
-        }
-        
-        if !currentParagraph.isEmpty {
-            elements.append(.paragraph(currentParagraph.joined(separator: "\n")))
-        }
-        
-        return elements
-    }
-    
-    @ViewBuilder
-    private func renderElement(_ element: MarkdownElement) -> some View {
-        switch element {
-        case .heading1(let text):
-            Text(text)
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .padding(.bottom, 4)
-        case .heading2(let text):
-            Text(text)
-                .font(.title)
-                .fontWeight(.semibold)
-                .padding(.bottom, 4)
-        case .heading3(let text):
-            Text(text)
-                .font(.title2)
-                .fontWeight(.medium)
-                .padding(.bottom, 4)
-        case .paragraph(let text):
-            Text(text)
-                .font(.body)
-                .fixedSize(horizontal: false, vertical: true)
-        case .bulletPoint(let text):
-            HStack(alignment: .top, spacing: 8) {
-                Text("•")
+                Text(content)
                     .font(.body)
-                Text(text)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
-}
-
-enum MarkdownElement: Hashable {
-    case heading1(String)
-    case heading2(String)
-    case heading3(String)
-    case paragraph(String)
-    case bulletPoint(String)
 }

@@ -26,8 +26,11 @@ struct MainView: View {
             if let workspaceData = UserDefaults.standard.data(forKey: "lastWorkspaceURL") {
                 var isStale = false
                 if let url = try? URL(resolvingBookmarkData: workspaceData, bookmarkDataIsStale: &isStale) {
-                    workspaceManager.workspaceURL = url
-                    workspaceManager.loadNotes()
+                    if url.startAccessingSecurityScopedResource() {
+                        workspaceManager.workspaceURL = url
+                        workspaceManager.loadWorkspaceItems()
+                        workspaceManager.loadNotes()
+                    }
                 }
             }
         }
