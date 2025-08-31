@@ -23,10 +23,12 @@ struct MainView: View {
         .frame(minWidth: 800, minHeight: 600)
         .onAppear {
             // Auto-load workspace if we have one stored in UserDefaults
-            if let workspaceData = UserDefaults.standard.data(forKey: "lastWorkspaceURL"),
-               let url = try? URL(resolvingBookmarkData: workspaceData, bookmarkDataIsStale: nil) {
-                workspaceManager.workspaceURL = url
-                workspaceManager.loadNotes()
+            if let workspaceData = UserDefaults.standard.data(forKey: "lastWorkspaceURL") {
+                var isStale = false
+                if let url = try? URL(resolvingBookmarkData: workspaceData, bookmarkDataIsStale: &isStale) {
+                    workspaceManager.workspaceURL = url
+                    workspaceManager.loadNotes()
+                }
             }
         }
         .onChange(of: workspaceManager.workspaceURL) { _, newURL in
